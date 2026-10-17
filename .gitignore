@@ -1,0 +1,8 @@
+venv/
+venv-mcp/
+__pycache__/
+*.pyc
+.env
+data/claims_store.json
+data/users.json
+.pytest_cache/
