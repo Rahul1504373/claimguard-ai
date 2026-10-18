@@ -28,6 +28,22 @@ import json
 import time
 import requests
 import streamlit as st
+import pandas as pd
+import altair as alt
+
+def render_flag_chart(data: dict):
+    """Bar chart with rotated x-axis labels, for flag-type dicts with longer keys."""
+    df = pd.DataFrame({"flag_type": list(data.keys()), "count": list(data.values())})
+    chart = (
+        alt.Chart(df)
+        .mark_bar()
+        .encode(
+            x=alt.X("flag_type:N", axis=alt.Axis(labelAngle=-40, title=None)),
+            y=alt.Y("count:Q", title="Count"),
+        )
+    )
+    st.altair_chart(chart, use_container_width=True)
+
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_KEY = os.getenv("CLAIMGUARD_API_KEY", "")
@@ -661,10 +677,23 @@ if tab_review:
             for c in sorted(claims, key=lambda x: x.get("created_at", ""), reverse=True):
                 exp = c.get("explainability") or {}
                 tier = exp.get("risk_tier", "—")
-                icon = {"low": "🟢", "moderate": "🟠", "high": "🔴"}.get(tier, "⚪")
-                with st.expander(f"{icon}  {c['claim_id']}  —  {c['claimant_name']}  —  {tier.upper() if tier != '—' else tier} ({exp.get('risk_score', '—')})"):
+                status = c.get("status", "—")
+                if status == "error":
+                    icon = "⚠️"
+                    header_label = "PROCESSING FAILED"
+                else:
+                    icon = {"low": "🟢", "moderate": "🟠", "high": "🔴"}.get(tier, "⚪")
+                    header_label = f"{tier.upper() if tier != '—' else tier} ({exp.get('risk_score', '—')})"
+                with st.expander(f"{icon}  {c['claim_id']}  —  {c['claimant_name']}  —  {header_label}"):
                     st.write(f"**Claim Type:** {c.get('claim_type', '—').capitalize()}")
                     st.write(f"**Status:** {c['status']}")
+                    if status == "error":
+                        error_steps = [s for s in c.get("agent_trace", []) if s.get("step") == "error"]
+                        if error_steps:
+                            msg = error_steps[-1].get("output", {}).get("message", "Unknown error")
+                            st.error(f"This claim's pipeline run failed and did not complete: {msg}")
+                        else:
+                            st.error("This claim's pipeline run failed and did not complete.")
                     st.write(f"**Narrative:** {c['raw_text']}")
                     st.write(f"**Rationale:** {exp.get('rationale', '—')}")
                     if c.get("declared_vehicle_number"):
@@ -704,13 +733,13 @@ if tab_analytics:
             with flag_col:
                 st.markdown("##### Pattern Flag Types")
                 if summary["pattern_flag_type_counts"]:
-                    st.bar_chart(summary["pattern_flag_type_counts"])
+                    render_flag_chart(summary["pattern_flag_type_counts"])
                 else:
                     st.caption("No pattern flags recorded yet.")
             with stat_col:
                 st.markdown("##### Statistical Flag Types")
                 if summary["statistical_flag_type_counts"]:
-                    st.bar_chart(summary["statistical_flag_type_counts"])
+                    render_flag_chart(summary["statistical_flag_type_counts"])
                 else:
                     st.caption("No statistical flags recorded yet.")
 
